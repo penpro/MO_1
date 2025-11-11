@@ -6,24 +6,41 @@
 #include "GameFramework/Character.h"
 #include "MOCharacter.generated.h"
 
+class USpringArmComponent;
+class UCameraComponent;
+class UMOIdentityComponent;
+
 UCLASS()
 class MO_1_API AMOCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
 	AMOCharacter();
 
+	/** Called by the PlayerController to move this pawn (X = Right, Y = Forward). */
+	UFUNCTION(BlueprintCallable, Category="MO|Input")
+	void HandleMove(const FVector2D Axis);
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MO|Identity")
+	TObjectPtr<UMOIdentityComponent> Identity;
+	
+	UFUNCTION(BlueprintPure, Category="MO|Identity")
+	UMOIdentityComponent* GetIdentity() const { return Identity; }
+	
+
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-public:	
-	// Called every frame
+	/** Third-person camera boom and camera. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MO|Camera")
+	TObjectPtr<USpringArmComponent> SpringArm;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MO|Camera")
+	TObjectPtr<UCameraComponent> Camera;
+
+public:
 	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
+	// We bind input in the PlayerController, so no bindings here.
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
 };
