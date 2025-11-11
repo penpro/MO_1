@@ -7,6 +7,10 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "MOPosessionSubsystem.h"
+
+#include "Blueprint/UserWidget.h"
+#include "UI_Possession.h"    
 
 void AMOPlayerController::BeginPlay()
 {
@@ -70,4 +74,130 @@ void AMOPlayerController::OnPossessAction(const FInputActionValue& /*Value*/)
 {
 	// Default to a BP hook so you can pop a menu.
 	TogglePossessionMenu();
+}
+
+void AMOPlayerController::TogglePossessionMenu()
+{
+	if (!PossessionMenu && PossessionMenuClass)
+	{
+		PossessionMenu = CreateWidget<UUserWidget>(this, PossessionMenuClass);
+	}
+
+	if (!PossessionMenu)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PossessionMenuClass is not set on BP_MOPlayerController"));
+		return;
+	}
+	
+	// Ask the server to rescan so everyone is in sync
+	if (IsLocalController())
+	{
+		if (HasAuthority())
+		{
+			// listen server: rescan directly
+			if (UWorld* World = GetWorld())
+			{
+				if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+				{
+					Subsys->DiscoverLevelPawns();
+				}
+			}
+		}
+		else
+		{
+			// client: ask the server to rescan and push updates
+			Server_RequestRescanPossession();
+		}
+	}
+
+	if (PossessionMenu->IsInViewport())
+	{
+		PossessionMenu->RemoveFromParent();
+		SetGameOnlyInput();
+		OnPossessionMenuToggled(false);
+	}
+	else
+	{
+		PossessionMenu->AddToViewport(PossessionMenuZOrder);
+		RefreshPossessionMenuUI();
+
+		SetShowMouseCursor(true);
+		FInputModeGameAndUI Mode;
+		Mode.SetHideCursorDuringCapture(false);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		Mode.SetWidgetToFocus(PossessionMenu->TakeWidget());
+		SetInputMode(Mode);
+
+		OnPossessionMenuToggled(true);
+	}
+}
+
+void AMOPlayerController::RefreshPossessionMenuUI()
+{
+	if (UUI_Possession* Poss = Cast<UUI_Possession>(PossessionMenu))
+	{
+		Poss->RefreshList();
+	}
+}
+
+void AMOPlayerController::SetGameOnlyInput()
+{
+	SetShowMouseCursor(false);
+	FInputModeGameOnly Mode;
+	SetInputMode(Mode);
+}
+
+// ===== RPCs =====
+
+void AMOPlayerController::Server_RequestPossessByGuid_Implementation(const FGuid& Guid)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+	{
+		const bool bOk = Subsys->PossessByGuid(this, Guid);
+		if (!bOk) return;
+
+		// Notify all players to refresh their UI
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(It->Get()))
+			{
+				MOPC->Client_RefreshPossessionList();
+			}
+		}
+	}
+}
+
+void AMOPlayerController::Client_RefreshPossessionList_Implementation()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+		{
+			Subsys->DiscoverLevelPawns(); // local scan
+		}
+	}
+	RefreshPossessionMenuUI();
+}
+
+void AMOPlayerController::Server_RequestRescanPossession_Implementation()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+		{
+			Subsys->DiscoverLevelPawns(); // server authoritative rescan
+
+			// Tell every player to refresh their UI
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(It->Get()))
+				{
+					MOPC->Client_RefreshPossessionList();
+				}
+			}
+		}
+	}
 }

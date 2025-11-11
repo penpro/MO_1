@@ -6,6 +6,7 @@
 
 class UScrollBox;
 class UUI_PossessionEntry;
+class UButton;
 
 UCLASS()
 class MO_1_API UUI_Possession : public UUserWidget
@@ -17,11 +18,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="MO|Possession")
 	void RefreshList();
 
+	UFUNCTION(BlueprintCallable, Category="MO|Possession")
+	void RequestRefresh();
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeDestruct() override;
-
-protected:
+	
 	// Designer widgets: create a ScrollBox named "List"
 	UPROPERTY(meta=(BindWidget)) TObjectPtr<UScrollBox> List;
 
@@ -29,9 +32,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|Possession")
 	TSubclassOf<UUI_PossessionEntry> EntryClass;
 
-private:
-	UFUNCTION() void OnCandidatesChanged();
+	// NEW: optional button in the widget (name it exactly "RefreshButton" in UMG)
+	UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> RefreshButton;
 
 private:
+	UFUNCTION() void OnCandidatesChanged();
+	UFUNCTION() void OnRefreshClicked();
+	
 	UPROPERTY() TObjectPtr<class UMOPosessionSubsystem> CachedSubsystem;
+
+	int32 RefreshRetryCount = 0;
+	FTimerHandle RefreshRetryHandle;
 };

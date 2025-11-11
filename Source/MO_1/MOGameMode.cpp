@@ -16,6 +16,7 @@ void AMOGameMode::BeginPlay()
 			if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
 			{
 				Subsys->DiscoverLevelPawns();
+				UE_LOG(LogTemp, Display, TEXT("Possession subsystem initialized in game mode"));
 			}
 		}
 	}, 0.0f, false);

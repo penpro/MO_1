@@ -10,6 +10,10 @@ AMOCharacter::AMOCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	bReplicates = true;             // <— make sure the pawn exists on clients
+	SetReplicateMovement(true);
+	bNetUseOwnerRelevancy = true;
+
 	//Create Identity with IdentityComponent
 	Identity = CreateDefaultSubobject<UMOIdentityComponent>(TEXT("Identity"));
 	

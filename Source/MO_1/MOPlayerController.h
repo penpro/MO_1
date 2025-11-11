@@ -9,6 +9,16 @@
 
 class UInputMappingContext;
 class UInputAction;
+class UUserWidget;               
+class UUI_Possession;
+
+USTRUCT(BlueprintType)
+struct FMOGuidName
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly) FGuid Guid;
+	UPROPERTY(BlueprintReadOnly) FText  DisplayName;
+};
 
 UCLASS()
 class MO_1_API AMOPlayerController : public APlayerController
@@ -38,6 +48,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="MO|Input")
 	TObjectPtr<UInputAction> IA_Possess;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|UI")
+	TSubclassOf<UUserWidget> PossessionMenuClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|UI")
+	int32 PossessionMenuZOrder = 1000;
+
 private:
 	// Enhanced Input handlers
 	void OnMove(const FInputActionValue& Value);
@@ -45,8 +61,29 @@ private:
 	void OnInteract(const FInputActionValue& Value);
 	void OnPossessAction(const FInputActionValue& Value);
 
+	UPROPERTY() TObjectPtr<UUserWidget> PossessionMenu;
+
+	void RefreshPossessionMenuUI();
+
 public:
-	/** Optional BP hook for showing a possession menu */
+
 	UFUNCTION(BlueprintImplementableEvent, Category="MO|UI")
+	void OnPossessionMenuToggled(bool bIsOpen);
+
+	UFUNCTION(BlueprintCallable, Category="MO|UI")
 	void TogglePossessionMenu();
+
+	UFUNCTION(BlueprintCallable, Category="MO|UI")
+	void SetGameOnlyInput();
+
+	// CLIENT → SERVER: request to possess a GUID
+	UFUNCTION(Server, Reliable)
+	void Server_RequestPossessByGuid(const FGuid& Guid);
+
+	// SERVER → CLIENT: refresh your possession UI/list
+	UFUNCTION(Client, Reliable)
+	void Client_RefreshPossessionList();
+
+	UFUNCTION(Server, Reliable)
+	void Server_RequestRescanPossession();
 };

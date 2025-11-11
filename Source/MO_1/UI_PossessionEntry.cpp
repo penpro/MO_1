@@ -2,6 +2,7 @@
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
+#include "MOPlayerController.h"
 #include "MOPosessionSubsystem.h"
 
 void UUI_PossessionEntry::SetupEntry(const FGuid& InGuid, const FText& InDisplayName)
@@ -28,19 +29,19 @@ void UUI_PossessionEntry::HandlePossessClicked()
 {
 	if (!Guid.IsValid()) return;
 
-	if (UWorld* World = GetWorld())
+	if (APlayerController* PC = GetOwningPlayer())
 	{
-		if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+		if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(PC))
 		{
-			APlayerController* PC = GetOwningPlayer();
-			if (Subsys->PossessByGuid(PC, Guid))
+			// Ask the server to possess
+			MOPC->Server_RequestPossessByGuid(Guid);
+
+			// Close menu locally and return to game-only input
+			if (UUserWidget* Root = GetTypedOuter<UUserWidget>())
 			{
-				// Optional: close menu after a successful possession
-				if (UUserWidget* Root = GetTypedOuter<UUserWidget>())
-				{
-					Root->RemoveFromParent();
-				}
+				Root->RemoveFromParent();
 			}
+			MOPC->SetGameOnlyInput();
 		}
 	}
 }

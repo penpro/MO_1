@@ -40,11 +40,19 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="MO|Possession")
 	FOnPossessionCandidatesChanged OnCandidatesChanged;
 
+	UFUNCTION(BlueprintCallable, Category="MO|Possession")
+	void GetCandidatesFor(class APlayerController* Requestor, UPARAM(ref) TArray<FMOPossessionCandidate>& Out) const;
+
 private:
 	// Internal registration helper
 	void RegisterPawn(APawn* Pawn, const FGuid& Guid, const FText& DisplayName);
+	bool bDiscoverInProgress = false;
 
 private:
 	UPROPERTY() TMap<FGuid, TWeakObjectPtr<APawn>> GuidToPawn;
 	UPROPERTY() TMap<FGuid, FText> GuidToName;
+
+	protected:
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 };
