@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/CheckBox.h"
 #include "UI_Possession.generated.h"
 
 class UScrollBox;
@@ -35,12 +36,18 @@ protected:
 	// NEW: optional button in the widget (name it exactly "RefreshButton" in UMG)
 	UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> RefreshButton;
 
+	// NEW: checkbox in the widget (name it exactly "ShowTakenCheck")
+	UPROPERTY(meta=(BindWidgetOptional))  TObjectPtr<UCheckBox> ShowTakenCheck;
+
 private:
 	UFUNCTION() void OnCandidatesChanged();
+	UFUNCTION() void OnShowTakenChanged(bool bChecked);
 	UFUNCTION() void OnRefreshClicked();
 	
 	UPROPERTY() TObjectPtr<class UMOPosessionSubsystem> CachedSubsystem;
 
 	int32 RefreshRetryCount = 0;
 	FTimerHandle RefreshRetryHandle;
+
+	bool bShowTaken = false;
 };

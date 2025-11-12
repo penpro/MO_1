@@ -1,23 +1,51 @@
 #include "UI_PossessionEntry.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
-#include "Kismet/GameplayStatics.h"
 #include "MOPlayerController.h"
-#include "MOPosessionSubsystem.h"
 
-void UUI_PossessionEntry::SetupEntry(const FGuid& InGuid, const FText& InDisplayName)
+void UUI_PossessionEntry::SetupEntry(const FGuid& InGuid, const FText& InDisplayName,
+									 bool bInIsYou, bool bInIsTaken, FText InTakenBy)
 {
-	Guid = InGuid;
+	Guid     = InGuid;
+	bIsYou   = bInIsYou;
+	bIsTaken = bInIsTaken;
+
 	if (DisplayNameText)
-	{
 		DisplayNameText->SetText(InDisplayName);
+
+	if (YouTag)
+	{
+		YouTag->SetText(FText::FromString(TEXT("You")));
+		YouTag->SetVisibility(bIsYou ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
+	if (TakenTag)
+	{
+		if (bIsTaken && !bIsYou)
+		{
+			if (!InTakenBy.IsEmpty())
+				TakenTag->SetText(FText::FromString(FString::Printf(TEXT("Taken by %s"), *InTakenBy.ToString())));
+			else
+				TakenTag->SetText(FText::FromString(TEXT("Taken")));
+			TakenTag->SetVisibility(ESlateVisibility::Visible);
+		}
+		else
+		{
+			TakenTag->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	if (PossessButton)
+	{
+		const bool bEnable = !bIsYou && !bIsTaken;
+		PossessButton->SetIsEnabled(bEnable);
+		PossessButton->SetVisibility(bEnable ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 
 void UUI_PossessionEntry::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
-
 	if (PossessButton)
 	{
 		PossessButton->OnClicked.Clear();
@@ -27,21 +55,10 @@ void UUI_PossessionEntry::NativeOnInitialized()
 
 void UUI_PossessionEntry::HandlePossessClicked()
 {
-	if (!Guid.IsValid()) return;
+	if (!Guid.IsValid() || bIsYou || bIsTaken) return;
 
-	if (APlayerController* PC = GetOwningPlayer())
+	if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(GetOwningPlayer()))
 	{
-		if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(PC))
-		{
-			// Ask the server to possess
-			MOPC->Server_RequestPossessByGuid(Guid);
-
-			// Close menu locally and return to game-only input
-			if (UUserWidget* Root = GetTypedOuter<UUserWidget>())
-			{
-				Root->RemoveFromParent();
-			}
-			MOPC->SetGameOnlyInput();
-		}
+		MOPC->Server_RequestPossessByGuid(Guid);
 	}
 }

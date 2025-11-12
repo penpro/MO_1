@@ -1,5 +1,8 @@
 #include "MOGameMode.h"
+
+#include "MOPlayerController.h"
 #include "MOPosessionSubsystem.h"
+
 #include "TimerManager.h"
 #include "Engine/World.h"
 
@@ -20,4 +23,23 @@ void AMOGameMode::BeginPlay()
 			}
 		}
 	}, 0.0f, false);
+}
+
+void AMOGameMode::PostLogin(APlayerController* NewPC)
+{
+	Super::PostLogin(NewPC);
+
+	if (UWorld* W = GetWorld())
+	{
+		if (auto* Subsys = W->GetSubsystem<UMOPosessionSubsystem>())
+		{
+			TArray<FMOGuidName> Snap;
+			Subsys->BuildFreeSnapshot(Snap);
+
+			if (auto* MOPC = Cast<AMOPlayerController>(NewPC))
+			{
+				MOPC->Client_SetCandidateSnapshot(Snap);
+			}
+		}
+	}
 }

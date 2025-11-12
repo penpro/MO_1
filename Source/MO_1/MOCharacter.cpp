@@ -2,6 +2,7 @@
 
 #include "MOCharacter.h"
 #include "MOIdentityComponent.h"
+#include "MOPosessionSubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -70,4 +71,17 @@ void AMOCharacter::HandleMove(const FVector2D Axis)
 
 	AddMovementInput(Forward, Axis.Y);
 	AddMovementInput(Right,   Axis.X);
+}
+
+void AMOCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	if (auto* S = GetWorld()->GetSubsystem<UMOPosessionSubsystem>())
+		S->DiscoverLevelPawns();
+}
+void AMOCharacter::UnPossessed()
+{
+	Super::UnPossessed();
+	if (auto* S = GetWorld()->GetSubsystem<UMOPosessionSubsystem>())
+		S->DiscoverLevelPawns();
 }

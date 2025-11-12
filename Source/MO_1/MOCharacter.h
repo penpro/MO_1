@@ -21,7 +21,9 @@ public:
 	/** Called by the PlayerController to move this pawn (X = Right, Y = Forward). */
 	UFUNCTION(BlueprintCallable, Category="MO|Input")
 	void HandleMove(const FVector2D Axis);
-	
+	void PossessedBy(AController* NewController);
+	void UnPossessed();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="MO|Identity")
 	TObjectPtr<UMOIdentityComponent> Identity;
 	

@@ -1,10 +1,12 @@
 #include "MOPosessionSubsystem.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 
 // Your identity component header from earlier
 #include "MOIdentityComponent.h"
+#include "MOPossessionTypes.h"
 
 void UMOPosessionSubsystem::DiscoverLevelPawns()
 {
@@ -130,4 +132,78 @@ void UMOPosessionSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		this, &UMOPosessionSubsystem::DiscoverLevelPawns));
 
 	UE_LOG(LogTemp, Display, TEXT("UMOPosessionSubsystem::OnWorldBeginPlay scheduled DiscoverLevelPawns"));
+}
+
+void UMOPosessionSubsystem::BuildFreeSnapshot(TArray<FMOGuidName>& Out) const
+{
+	Out.Reset();
+
+	// Iterate the discovered pawns map
+	for (const auto& KVP : GuidToPawn)
+	{
+		const FGuid& Guid = KVP.Key;
+		APawn* Pawn       = KVP.Value.Get();
+		if (!Pawn) continue;
+
+		// Hide pawns already owned by any PlayerController. AI is allowed.
+		if (Cast<APlayerController>(Pawn->GetController()) != nullptr)
+		{
+			continue;
+		}
+
+		const FText* Nm = GuidToName.Find(Guid);
+		if (!Nm) continue;
+
+		FMOGuidName Row;
+		Row.Guid = Guid;
+		Row.DisplayName = *Nm;
+		Out.Add(Row);
+	}
+}
+
+void UMOPosessionSubsystem::BuildFullSnapshot(TArray<FMOGuidName>& Out) const
+{
+	Out.Reset();
+
+	for (const auto& KVP : GuidToPawn)
+	{
+		const FGuid& Guid = KVP.Key;
+		APawn* Pawn       = KVP.Value.Get();
+		if (!Pawn) continue;
+
+		const FText* Nm = GuidToName.Find(Guid);
+		if (!Nm) continue;
+
+		FMOGuidName Row;
+		Row.Guid        = Guid;
+		Row.DisplayName = *Nm;
+
+		if (AController* C = Pawn->GetController())
+		{
+			if (APlayerController* PC = Cast<APlayerController>(C))
+			{
+				Row.bTaken = true;
+				if (APlayerState* PS = PC->PlayerState)
+				{
+					Row.TakenBy = FText::FromString(PS->GetPlayerName());  // <- here
+				}
+				else
+				{
+					Row.TakenBy = FText::FromString(TEXT("Player"));
+				}
+			}
+			else
+			{
+				Row.bTaken  = false;
+				Row.TakenBy = FText::GetEmpty();
+			}
+		}
+		else
+		{
+			Row.bTaken  = false;
+			Row.TakenBy = FText::GetEmpty();
+		}
+
+		Out.Add(Row);
+	}
 }

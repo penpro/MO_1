@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "MOPossessionTypes.h"
 #include "MOPosessionSubsystem.generated.h"
 
 class APawn;
@@ -43,14 +44,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category="MO|Possession")
 	void GetCandidatesFor(class APlayerController* Requestor, UPARAM(ref) TArray<FMOPossessionCandidate>& Out) const;
 
+	UPROPERTY() TMap<FGuid, TWeakObjectPtr<APawn>> GuidToPawn;
+	UPROPERTY() TMap<FGuid, FText> GuidToName;
+
+	// Server-only utility to build the list of free pawns
+	void BuildFreeSnapshot(TArray<FMOGuidName>& Out) const;
+
+	// NEW: include both free and taken, with owner names for taken pawns
+	void BuildFullSnapshot(TArray<FMOGuidName>& Out) const;
+
 private:
 	// Internal registration helper
 	void RegisterPawn(APawn* Pawn, const FGuid& Guid, const FText& DisplayName);
 	bool bDiscoverInProgress = false;
 
 private:
-	UPROPERTY() TMap<FGuid, TWeakObjectPtr<APawn>> GuidToPawn;
-	UPROPERTY() TMap<FGuid, FText> GuidToName;
+
+
 
 	protected:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;

@@ -11,4 +11,5 @@ class MO_1_API AMOGameMode : public AGameMode
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostLogin(APlayerController* NewPlayer) override;
 };

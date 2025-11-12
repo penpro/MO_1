@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// MOPlayerController.cpp
 
 #include "MOPlayerController.h"
 #include "MOCharacter.h"
@@ -7,16 +7,25 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
-#include "MOPosessionSubsystem.h"
+
+#include "MOPosessionSubsystem.h"  // server snapshot + possess by GUID
+#include "MOHUD.h"                 // Master Menu HUD bridge
+#include "MOUITypes.h"             // EMOMenuTab
 
 #include "Blueprint/UserWidget.h"
-#include "UI_Possession.h"    
+#include "UI_Possession.h"         // fallback possession popup
+
+// ============================================================================
+// APlayerController
+// ============================================================================
 
 void AMOPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Add mapping context at runtime
+	// Install our Enhanced Input mapping context at runtime.
+	// NOTE: If you plan to use multiple contexts (eg. vehicles/menus),
+	// consider removing ClearAllMappings() and layering contexts by priority.
 	if (ULocalPlayer* LP = GetLocalPlayer())
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsys =
@@ -29,20 +38,40 @@ void AMOPlayerController::BeginPlay()
 			}
 		}
 	}
+
+	// (Optional) Auto-open possession popup on first load in SP, useful for tests.
+	if (IsLocalController())
+	{
+		FTimerHandle H;
+		GetWorldTimerManager().SetTimer(H, this, &AMOPlayerController::TogglePossessionMenu, 0.05f, false);
+	}
 }
 
 void AMOPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
+	// Bind Enhanced Input actions.
 	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(InputComponent))
 	{
+		// Movement / Camera / Interact
 		if (IA_Move)     { EIC->BindAction(IA_Move,     ETriggerEvent::Triggered, this, &AMOPlayerController::OnMove); }
 		if (IA_Look)     { EIC->BindAction(IA_Look,     ETriggerEvent::Triggered, this, &AMOPlayerController::OnLook); }
 		if (IA_Interact) { EIC->BindAction(IA_Interact, ETriggerEvent::Started,   this, &AMOPlayerController::OnInteract); }
+
+		// Possession (legacy popup or Master Menu Possession tab)
 		if (IA_Possess)  { EIC->BindAction(IA_Possess,  ETriggerEvent::Started,   this, &AMOPlayerController::OnPossessAction); }
+
+		// NEW — Master Menu and tab shortcuts
+		if (IA_GameMenu) { EIC->BindAction(IA_GameMenu, ETriggerEvent::Started,   this, &AMOPlayerController::HandleGameMenuAction); }
+		if (IA_Craft)    { EIC->BindAction(IA_Craft,    ETriggerEvent::Started,   this, &AMOPlayerController::HandleCraftAction); }
+		if (IA_Skills)   { EIC->BindAction(IA_Skills,   ETriggerEvent::Started,   this, &AMOPlayerController::HandleSkillsAction); }
 	}
 }
+
+// ============================================================================
+// Movement / Camera / Interaction
+// ============================================================================
 
 void AMOPlayerController::OnMove(const FInputActionValue& Value)
 {
@@ -66,18 +95,81 @@ void AMOPlayerController::OnLook(const FInputActionValue& Value)
 
 void AMOPlayerController::OnInteract(const FInputActionValue& /*Value*/)
 {
-	// Placeholder. Implement as needed or handle in BP via an event.
-	 UE_LOG(LogTemp, Log, TEXT("Interact pressed"));
+	// Placeholder for interact. Promote to RPCs as needed for gameplay actions.
+	UE_LOG(LogTemp, Verbose, TEXT("Interact pressed"));
 }
+
+// ============================================================================
+// Master Menu / Possession actions
+// ============================================================================
 
 void AMOPlayerController::OnPossessAction(const FInputActionValue& /*Value*/)
 {
-	// Default to a BP hook so you can pop a menu.
+	// If Master Menu HUD exists, open its Possession tab; otherwise fallback to popup
+	if (AMOHUD* H = GetHUD<AMOHUD>())
+	{
+		H->ShowMasterMenuTab(EMOMenuTab::Possession);
+		return;
+	}
+	TogglePossessionMenu(); // fallback UI
+}
+
+void AMOPlayerController::HandleGameMenuAction()
+{
+	// Toggle Master Menu (last focused tab), or fallback to popup
+	if (AMOHUD* H = GetHUD<AMOHUD>())
+	{
+		H->ToggleMasterMenu();
+		return;
+	}
+	TogglePossessionMenu(); // fallback
+}
+
+void AMOPlayerController::HandlePossessionAction()
+{
+	// Kept for parity if bound elsewhere; prefer OnPossessAction for IA_Possess
+	if (AMOHUD* H = GetHUD<AMOHUD>())
+	{
+		H->ShowMasterMenuTab(EMOMenuTab::Possession);
+		return;
+	}
 	TogglePossessionMenu();
 }
 
+void AMOPlayerController::HandleCraftAction()
+{
+	if (AMOHUD* H = GetHUD<AMOHUD>())
+	{
+		H->ShowMasterMenuTab(EMOMenuTab::Crafting);
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("Craft action pressed, but Master Menu HUD not present"));
+}
+
+void AMOPlayerController::HandleSkillsAction()
+{
+	if (AMOHUD* H = GetHUD<AMOHUD>())
+	{
+		H->ShowMasterMenuTab(EMOMenuTab::Skills);
+		return;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("Skills action pressed, but Master Menu HUD not present"));
+}
+
+// ============================================================================
+// Possession popup (fallback UI) — used when Master Menu/HUD is not in use
+// ============================================================================
+
 void AMOPlayerController::TogglePossessionMenu()
 {
+	// Never build UI for non-local controllers (e.g. server proxy of a client)
+	if (!IsLocalController())
+	{
+		UE_LOG(LogTemp, VeryVerbose, TEXT("TogglePossessionMenu ignored: not local PC"));
+		return;
+	}
+
+	// Lazily create the widget
 	if (!PossessionMenu && PossessionMenuClass)
 	{
 		PossessionMenu = CreateWidget<UUserWidget>(this, PossessionMenuClass);
@@ -88,56 +180,66 @@ void AMOPlayerController::TogglePossessionMenu()
 		UE_LOG(LogTemp, Warning, TEXT("PossessionMenuClass is not set on BP_MOPlayerController"));
 		return;
 	}
-	
-	// Ask the server to rescan so everyone is in sync
-	if (IsLocalController())
+
+	// Ask server for a fresh snapshot before showing
+	if (!HasAuthority())   // client
 	{
-		if (HasAuthority())
+		Server_RequestRescanPossession();
+	}
+	else                   // listen server's local PC
+	{
+		if (UWorld* World = GetWorld())
 		{
-			// listen server: rescan directly
-			if (UWorld* World = GetWorld())
+			if (auto* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
 			{
-				if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
-				{
-					Subsys->DiscoverLevelPawns();
-				}
+				Subsys->DiscoverLevelPawns();
 			}
 		}
-		else
-		{
-			// client: ask the server to rescan and push updates
-			Server_RequestRescanPossession();
-		}
+		Server_PushSnapshotToAll();
 	}
 
+	// Toggle visibility
 	if (PossessionMenu->IsInViewport())
 	{
-		PossessionMenu->RemoveFromParent();
-		SetGameOnlyInput();
-		OnPossessionMenuToggled(false);
+		ClosePossessionMenu();
+		return;
 	}
-	else
-	{
-		PossessionMenu->AddToViewport(PossessionMenuZOrder);
-		RefreshPossessionMenuUI();
 
-		SetShowMouseCursor(true);
-		FInputModeGameAndUI Mode;
-		Mode.SetHideCursorDuringCapture(false);
-		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		Mode.SetWidgetToFocus(PossessionMenu->TakeWidget());
-		SetInputMode(Mode);
+	PossessionMenu->AddToViewport(PossessionMenuZOrder);
+	RefreshPossessionMenuUI();
 
-		OnPossessionMenuToggled(true);
-	}
+	// Switch to Game+UI input so mouse can interact with the widget
+	SetShowMouseCursor(true);
+	FInputModeGameAndUI Mode;
+	Mode.SetHideCursorDuringCapture(false);
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	Mode.SetWidgetToFocus(PossessionMenu->TakeWidget());
+	SetInputMode(Mode);
+
+	OnPossessionMenuToggled(true);
 }
 
 void AMOPlayerController::RefreshPossessionMenuUI()
 {
 	if (UUI_Possession* Poss = Cast<UUI_Possession>(PossessionMenu))
 	{
-		Poss->RefreshList();
+		Poss->RefreshList(); // reads from GetCachedCandidates()
 	}
+}
+
+void AMOPlayerController::ClosePossessionMenu()
+{
+	if (!IsLocalController()) return;
+
+	if (PossessionMenu && PossessionMenu->IsInViewport())
+	{
+		PossessionMenu->RemoveFromParent();
+	}
+	// Force fresh instance next open (avoids stale focus/state issues)
+	PossessionMenu = nullptr;
+
+	SetGameOnlyInput();
+	OnPossessionMenuToggled(false);
 }
 
 void AMOPlayerController::SetGameOnlyInput()
@@ -147,36 +249,67 @@ void AMOPlayerController::SetGameOnlyInput()
 	SetInputMode(Mode);
 }
 
-// ===== RPCs =====
+// ============================================================================
+// Possession replication & snapshot plumbing
+// ============================================================================
 
-void AMOPlayerController::Server_RequestPossessByGuid_Implementation(const FGuid& Guid)
+void AMOPlayerController::Server_PushSnapshotToAll()
 {
 	UWorld* World = GetWorld();
 	if (!World) return;
 
 	if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
 	{
-		const bool bOk = Subsys->PossessByGuid(this, Guid);
-		if (!bOk) return;
+		TArray<FMOGuidName> Snapshot;
+		Subsys->BuildFullSnapshot(Snapshot); // includes taken/free + owner names
 
-		// Notify all players to refresh their UI
+		// Sort: free first, then alphabetically for stable UI
+		Snapshot.Sort([](const FMOGuidName& A, const FMOGuidName& B)
+		{
+			if (A.bTaken != B.bTaken) return !A.bTaken && B.bTaken; // free first
+			return A.DisplayName.ToString() < B.DisplayName.ToString();
+		});
+
 		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
 			if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(It->Get()))
 			{
-				MOPC->Client_RefreshPossessionList();
+				MOPC->Client_SetCandidateSnapshot(Snapshot);
 			}
 		}
 	}
 }
 
+void AMOPlayerController::Client_SetCandidateSnapshot_Implementation(const TArray<FMOGuidName>& InList)
+{
+	CachedCandidates = InList;
+
+	// If UI is open, refresh it to reflect the new snapshot
+	if (PossessionMenu && PossessionMenu->IsInViewport())
+	{
+		if (UUI_Possession* Poss = Cast<UUI_Possession>(PossessionMenu))
+		{
+			Poss->RefreshList();
+		}
+	}
+}
+
+void AMOPlayerController::Client_PossessionResult_Implementation(bool bSuccess)
+{
+	if (bSuccess)
+	{
+		ClosePossessionMenu();
+	}
+}
+
 void AMOPlayerController::Client_RefreshPossessionList_Implementation()
 {
+	// Local convenience refresh (rarely used)
 	if (UWorld* World = GetWorld())
 	{
 		if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
 		{
-			Subsys->DiscoverLevelPawns(); // local scan
+			Subsys->DiscoverLevelPawns(); // local scan (mostly for single-player testing)
 		}
 	}
 	RefreshPossessionMenuUI();
@@ -188,16 +321,29 @@ void AMOPlayerController::Server_RequestRescanPossession_Implementation()
 	{
 		if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
 		{
-			Subsys->DiscoverLevelPawns(); // server authoritative rescan
-
-			// Tell every player to refresh their UI
-			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-			{
-				if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(It->Get()))
-				{
-					MOPC->Client_RefreshPossessionList();
-				}
-			}
+			Subsys->DiscoverLevelPawns(); // authoritative refresh
+			Server_PushSnapshotToAll();   // then push to everyone
 		}
+	}
+}
+
+void AMOPlayerController::Server_RequestPossessByGuid_Implementation(const FGuid& Guid)
+{
+	UWorld* World = GetWorld();
+	if (!World) { Client_PossessionResult(false); return; }
+
+	if (UMOPosessionSubsystem* Subsys = World->GetSubsystem<UMOPosessionSubsystem>())
+	{
+		const bool bOk = Subsys->PossessByGuid(this, Guid);
+		Client_PossessionResult(bOk);
+
+		// If listen server's local PC, make the close explicit too
+		if (bOk && HasAuthority() && IsLocalController())
+		{
+			ClosePossessionMenu();
+		}
+
+		// After any attempt, push updated snapshot to all
+		Server_PushSnapshotToAll();
 	}
 }
