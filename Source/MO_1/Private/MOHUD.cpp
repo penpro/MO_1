@@ -1,5 +1,6 @@
 #include "MOHUD.h"
 #include "UI_MasterMenu.h"
+#include "MOUIManagerSubsystem.h"
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
 
@@ -14,6 +15,15 @@ void AMOHUD::BeginPlay()
 		{
 			MasterMenu->AddToViewport(50);
 			MasterMenu->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
+		// Tell the UI Manager that this HUD is ready. It decides whether to open a menu now.
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+			{
+				UIM->RegisterLocalHUD(this);
+			}
 		}
 	}
 }

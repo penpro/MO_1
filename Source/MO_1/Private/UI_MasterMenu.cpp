@@ -5,6 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "MOPersistenceSubsystem.h" // for SaveSettings now; expand later
+#include "MO_1/MOPlayerController.h"
 
 void UUI_MasterMenu::NativeOnInitialized()
 {
@@ -15,6 +16,7 @@ void UUI_MasterMenu::NativeOnInitialized()
     if (CraftingButton)      { CraftingButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnCraftingClicked); }
     if (SkillsButton)        { SkillsButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnSkillsClicked); }
     if (WikiButton)          { WikiButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnWikiClicked); }
+    if (LoadGameButton)      { LoadGameButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnLoadGameClicked); }
 
     if (SaveGameButton)      { SaveGameButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnSaveClicked); }
     if (SaveAndExitButton)   { SaveAndExitButton->OnClicked.AddDynamic(this, &UUI_MasterMenu::OnSaveAndExitClicked); }
@@ -49,14 +51,42 @@ void UUI_MasterMenu::OnCraftingClicked()   { FocusTab(EMOMenuTab::Crafting); }
 void UUI_MasterMenu::OnSkillsClicked()     { FocusTab(EMOMenuTab::Skills); }
 void UUI_MasterMenu::OnWikiClicked()       { FocusTab(EMOMenuTab::Wiki); }
 
+void UUI_MasterMenu::OnLoadGameClicked()
+{
+    if (!FocusPanel || !LoadGamePanelClass) return;
+    if (UUserWidget* Panel = CreateWidget<UUserWidget>(GetWorld(), LoadGamePanelClass))
+    {
+        SetFocusPanelWidget(Panel); // reuse your existing helper
+        CurrentTab = EMOMenuTab::None; // optional: “tabless” panel
+    }
+}
+
 void UUI_MasterMenu::OnSaveClicked()
 {
-    // Minimal: save settings for now. Later: call SaveAll(WorldGuid).
-    if (UMOPersistenceSubsystem* P = GetGameInstance()->GetSubsystem<UMOPersistenceSubsystem>())
+    UWorld* W = GetWorld();
+    if (!W) return;
+
+    // Client path: ask server to save
+    if (W->GetNetMode() == NM_Client)
     {
-        P->SaveSettings();
+        if (APlayerController* PC = GetOwningPlayer())
+        {
+            if (auto* MOPC = Cast<AMOPlayerController>(PC))
+            {
+                UE_LOG(LogTemp, Display, TEXT("Save requested (client->server)."));
+                MOPC->Server_SaveWorld(/*bAutosave*/false, /*Label*/ TEXT(""));
+            }
+        }
+        return;
     }
-    UE_LOG(LogTemp, Display, TEXT("Save requested"));
+
+    // Standalone / Listen server path: save directly
+    if (auto* P = GetGameInstance()->GetSubsystem<UMOPersistenceSubsystem>())
+    {
+        const FGuid WorldGuid = P->GetOrCreateWorldGuid();
+        const bool bOK = P->SaveWorldNewSlot(WorldGuid, /*bAutosave*/ false, /*Label*/ TEXT(""));
+        UE_LOG(LogTemp, Display, TEXT("World save %s"), bOK ? TEXT("OK") : TEXT("FAILED"));
+    }
 }
 
 void UUI_MasterMenu::OnSaveAndExitClicked()

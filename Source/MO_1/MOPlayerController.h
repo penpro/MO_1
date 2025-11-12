@@ -141,4 +141,7 @@ public:
 	/** Client → Server: ask server to rescan and push a fresh snapshot */
 	UFUNCTION(Server, Reliable)
 	void Server_RequestRescanPossession();
+
+	UFUNCTION(Server, Reliable)
+	void Server_SaveWorld(bool bAutosave, const FString& Label = TEXT(""));
 };

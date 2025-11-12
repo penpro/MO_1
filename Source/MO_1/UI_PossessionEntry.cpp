@@ -59,6 +59,7 @@ void UUI_PossessionEntry::HandlePossessClicked()
 
 	if (AMOPlayerController* MOPC = Cast<AMOPlayerController>(GetOwningPlayer()))
 	{
+		if (PossessButton) { PossessButton->SetIsEnabled(false); } // debounce
 		MOPC->Server_RequestPossessByGuid(Guid);
 	}
 }

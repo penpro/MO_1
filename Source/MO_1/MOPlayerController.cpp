@@ -7,10 +7,12 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "MOPersistenceSubsystem.h"
 
 #include "MOPosessionSubsystem.h"  // server snapshot + possess by GUID
 #include "MOHUD.h"                 // Master Menu HUD bridge
 #include "MOUITypes.h"             // EMOMenuTab
+#include "MOUIManagerSubsystem.h"
 
 #include "Blueprint/UserWidget.h"
 #include "UI_Possession.h"         // fallback possession popup
@@ -40,11 +42,11 @@ void AMOPlayerController::BeginPlay()
 	}
 
 	// (Optional) Auto-open possession popup on first load in SP, useful for tests.
-	if (IsLocalController())
+	/*if (IsLocalController())
 	{
 		FTimerHandle H;
 		GetWorldTimerManager().SetTimer(H, this, &AMOPlayerController::TogglePossessionMenu, 0.05f, false);
-	}
+	}*/
 }
 
 void AMOPlayerController::SetupInputComponent()
@@ -105,24 +107,30 @@ void AMOPlayerController::OnInteract(const FInputActionValue& /*Value*/)
 
 void AMOPlayerController::OnPossessAction(const FInputActionValue& /*Value*/)
 {
-	// If Master Menu HUD exists, open its Possession tab; otherwise fallback to popup
-	if (AMOHUD* H = GetHUD<AMOHUD>())
+	if (UGameInstance* GI = GetGameInstance())
 	{
-		H->ShowMasterMenuTab(EMOMenuTab::Possession);
-		return;
+		if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+		{
+			UIM->ShowTab(EMOMenuTab::Possession);
+			return;
+		}
 	}
-	TogglePossessionMenu(); // fallback UI
+	TogglePossessionMenu();
 }
 
 void AMOPlayerController::HandleGameMenuAction()
 {
-	// Toggle Master Menu (last focused tab), or fallback to popup
-	if (AMOHUD* H = GetHUD<AMOHUD>())
+	if (UGameInstance* GI = GetGameInstance())
 	{
-		H->ToggleMasterMenu();
-		return;
+		if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+		{
+			// Toggle using the last remembered tab
+			UIM->ToggleMenu();
+			return;
+		}
 	}
-	TogglePossessionMenu(); // fallback
+	// Absolute fallback if subsystem missing
+	TogglePossessionMenu();
 }
 
 void AMOPlayerController::HandlePossessionAction()
@@ -138,22 +146,26 @@ void AMOPlayerController::HandlePossessionAction()
 
 void AMOPlayerController::HandleCraftAction()
 {
-	if (AMOHUD* H = GetHUD<AMOHUD>())
+	if (UGameInstance* GI = GetGameInstance())
 	{
-		H->ShowMasterMenuTab(EMOMenuTab::Crafting);
-		return;
+		if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+		{
+			UIM->ShowTab(EMOMenuTab::Crafting);
+			return;
+		}
 	}
-	UE_LOG(LogTemp, Warning, TEXT("Craft action pressed, but Master Menu HUD not present"));
 }
 
 void AMOPlayerController::HandleSkillsAction()
 {
-	if (AMOHUD* H = GetHUD<AMOHUD>())
+	if (UGameInstance* GI = GetGameInstance())
 	{
-		H->ShowMasterMenuTab(EMOMenuTab::Skills);
-		return;
+		if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+		{
+			UIM->ShowTab(EMOMenuTab::Skills);
+			return;
+		}
 	}
-	UE_LOG(LogTemp, Warning, TEXT("Skills action pressed, but Master Menu HUD not present"));
 }
 
 // ============================================================================
@@ -296,10 +308,24 @@ void AMOPlayerController::Client_SetCandidateSnapshot_Implementation(const TArra
 
 void AMOPlayerController::Client_PossessionResult_Implementation(bool bSuccess)
 {
-	if (bSuccess)
+	if (!bSuccess)
 	{
-		ClosePossessionMenu();
+		// You can show a toast or sound here if you want
+		return;
 	}
+
+	// Prefer the UI Manager which will tell the HUD to hide the menu and restore input
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+		{
+			UIM->HideMenu();
+			return;
+		}
+	}
+
+	// Fallback to legacy popup if UI Manager is not present
+	ClosePossessionMenu();
 }
 
 void AMOPlayerController::Client_RefreshPossessionList_Implementation()
@@ -340,10 +366,32 @@ void AMOPlayerController::Server_RequestPossessByGuid_Implementation(const FGuid
 		// If listen server's local PC, make the close explicit too
 		if (bOk && HasAuthority() && IsLocalController())
 		{
-			ClosePossessionMenu();
+			if (UGameInstance* GI = GetGameInstance())
+			{
+				if (auto* UIM = GI->GetSubsystem<UMOUIManagerSubsystem>())
+				{
+					UIM->HideMenu();
+				}
+				else
+				{
+					ClosePossessionMenu(); // legacy fallback
+				}
+			}
 		}
 
 		// After any attempt, push updated snapshot to all
 		Server_PushSnapshotToAll();
+	}
+}
+
+void AMOPlayerController::Server_SaveWorld_Implementation(bool bAutosave, const FString& Label)
+{
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client) return;
+
+	if (auto* PS = GetGameInstance()->GetSubsystem<UMOPersistenceSubsystem>())
+	{
+		const FGuid G = PS->GetOrCreateWorldGuid();
+		const bool bOK = PS->SaveWorldNewSlot(G, bAutosave, Label);
+		UE_LOG(LogTemp, Display, TEXT("[Server_SaveWorld] %s"), bOK ? TEXT("OK") : TEXT("FAILED"));
 	}
 }

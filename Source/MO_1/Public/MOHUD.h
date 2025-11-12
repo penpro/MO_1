@@ -35,6 +35,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|HUD")
 	TSubclassOf<UUI_MasterMenu> MasterMenuClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|HUD")
+	bool bOpenMasterMenuAtBeginPlay = true;
+
 private:
 	void SetUIOnlyInput(UUserWidget* FocusWidget);
 	void SetGameOnlyInput();

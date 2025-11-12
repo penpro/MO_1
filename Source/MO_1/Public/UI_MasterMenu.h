@@ -54,6 +54,7 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> SaveAndExitButton;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> ExitToMainMenuButton;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> ExitGameButton;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UButton> LoadGameButton;
 
     // Panel classes to spawn in FocusPanel
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|Menu")
@@ -71,6 +72,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|Menu")
     TSubclassOf<UUserWidget> WikiPanelClass;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|Menu")
+    TSubclassOf<UUserWidget> LoadGamePanelClass;
+
     // Map name of your front end menu (LoadingScreen)
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MO|Menu")
     FName MainMenuMapName = TEXT("LoadingScreen");
@@ -82,6 +86,7 @@ private:
     UFUNCTION() void OnCraftingClicked();
     UFUNCTION() void OnSkillsClicked();
     UFUNCTION() void OnWikiClicked();
+    UFUNCTION() void OnLoadGameClicked();
 
     UFUNCTION() void OnSaveClicked();
     UFUNCTION() void OnSaveAndExitClicked();

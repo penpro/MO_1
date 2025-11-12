@@ -1,5 +1,6 @@
 #include "MOGameMode.h"
 
+#include "MOPersistenceSubsystem.h"
 #include "MOPlayerController.h"
 #include "MOPosessionSubsystem.h"
 
@@ -23,6 +24,11 @@ void AMOGameMode::BeginPlay()
 			}
 		}
 	}, 0.0f, false);
+
+	if (auto* PS = GetGameInstance()->GetSubsystem<UMOPersistenceSubsystem>())
+	{
+		PS->ApplyPendingLoadIfAny();
+	}
 }
 
 void AMOGameMode::PostLogin(APlayerController* NewPC)
